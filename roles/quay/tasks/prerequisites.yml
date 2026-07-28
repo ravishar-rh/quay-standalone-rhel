@@ -1,0 +1,62 @@
+---
+- name: Assert supported RHEL major version
+  ansible.builtin.assert:
+    that:
+      - ansible_os_family == "RedHat"
+      - ansible_distribution_major_version in ["9", "10"]
+    fail_msg: >-
+      This role supports RHEL 9 and RHEL 10 only
+      (got {{ ansible_distribution | default('unknown') }}
+      {{ ansible_distribution_version | default('') }}).
+
+- name: Assert secrets are provided and not placeholders
+  ansible.builtin.include_tasks: assert_secrets.yml
+
+- name: Resolve container images for host OS
+  ansible.builtin.set_fact:
+    _quay_postgres_image: >-
+      {{ quay_postgres_image
+         if (quay_postgres_image | default('') | length) > 0
+         else (quay_images_rhel9.postgres
+               if ansible_distribution_major_version == '9'
+               else quay_images_rhel10.postgres) }}
+    _quay_redis_image: >-
+      {{ quay_redis_image
+         if (quay_redis_image | default('') | length) > 0
+         else (quay_images_rhel9.redis
+               if ansible_distribution_major_version == '9'
+               else quay_images_rhel10.redis) }}
+    _quay_image: "{{ quay_image }}"
+
+- name: Disconnected mode — install packages and load images from offline bundle
+  when: quay_disconnected | bool
+  block:
+    - name: Assert offline bundle directory is set
+      ansible.builtin.assert:
+        that:
+          - (quay_offline_bundle_dir | default('') | length) > 0
+        fail_msg: >-
+          Disconnected mode requires quay_offline_bundle_dir
+          (e.g. /opt/quay-offline-bundle). Build it with
+          ./scripts/download-offline-bundle.sh on a connected host.
+
+    - name: Install packages from offline RPMs
+      ansible.builtin.include_tasks: offline_packages.yml
+
+    - name: Load container images from offline tarballs
+      ansible.builtin.include_tasks: offline_images.yml
+
+- name: Connected mode — install packages from repos and pull images
+  when: not (quay_disconnected | bool)
+  block:
+    - name: Install required packages at latest
+      ansible.builtin.dnf:
+        name: "{{ quay_packages }}"
+        state: "{{ quay_packages_state }}"
+
+    - name: Configure registry authentication
+      ansible.builtin.include_tasks: registry_auth.yml
+
+    - name: Pull latest container images
+      when: quay_pull_images | bool
+      ansible.builtin.include_tasks: pull_images.yml

@@ -1,0 +1,39 @@
+---
+- name: Create Quay directory tree
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ quay_base_dir }}"
+    - "{{ quay_base_dir }}/postgres-quay"
+    - "{{ quay_base_dir }}/config"
+    - "{{ quay_base_dir }}/storage"
+
+- name: Grant postgres container user write access to data dir
+  ansible.builtin.command:
+    argv:
+      - setfacl
+      - -m
+      - u:26:-wx
+      - "{{ quay_base_dir }}/postgres-quay"
+  changed_when: false
+
+- name: Grant quay container user write access to storage dir
+  ansible.builtin.command:
+    argv:
+      - setfacl
+      - -m
+      - u:1001:-wx
+      - "{{ quay_base_dir }}/storage"
+  changed_when: false
+
+- name: Manage /etc/hosts entry for Quay hostname
+  when: quay_manage_hosts_file | bool
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^\s*\S+\s+{{ quay_hostname | regex_escape }}\s*$'
+    line: "{{ quay_host_ip }} {{ quay_hostname }}"
+    state: present

@@ -1,0 +1,135 @@
+---
+# Uninstall / cleanup Quay PoC containers and related host config.
+# Requires: quay_uninstall_confirm: true
+
+- name: Require explicit uninstall confirmation
+  ansible.builtin.assert:
+    that:
+      - quay_uninstall_confirm | bool
+    fail_msg: >-
+      Refusing to uninstall. Re-run with -e quay_uninstall_confirm=true
+      (this removes Quay containers and optionally data/images).
+
+- name: Resolve container images for cleanup tags
+  ansible.builtin.set_fact:
+    _quay_postgres_image: >-
+      {{ quay_postgres_image
+         if (quay_postgres_image | default('') | length) > 0
+         else (quay_images_rhel9.postgres
+               if ansible_distribution_major_version | default('9') == '9'
+               else quay_images_rhel10.postgres) }}
+    _quay_redis_image: >-
+      {{ quay_redis_image
+         if (quay_redis_image | default('') | length) > 0
+         else (quay_images_rhel9.redis
+               if ansible_distribution_major_version | default('9') == '9'
+               else quay_images_rhel10.redis) }}
+    _quay_image: "{{ quay_image }}"
+
+- name: Stop and remove Quay-related containers
+  ansible.builtin.command:
+    argv:
+      - podman
+      - rm
+      - -f
+      - "{{ item }}"
+  loop:
+    - "{{ quay_container }}"
+    - "{{ quay_redis_container }}"
+    - "{{ quay_postgres_container }}"
+  changed_when: true
+  failed_when: false
+
+- name: Remove Quay container images
+  when: quay_uninstall_remove_images | bool
+  ansible.builtin.command:
+    argv:
+      - podman
+      - rmi
+      - -f
+      - "{{ item }}"
+  loop:
+    - "{{ _quay_image | trim }}"
+    - "{{ _quay_redis_image | trim }}"
+    - "{{ _quay_postgres_image | trim }}"
+  changed_when: true
+  failed_when: false
+
+- name: Check whether firewalld is active
+  when: quay_uninstall_remove_firewall_ports | bool
+  ansible.builtin.command: systemctl is-active firewalld
+  register: quay_firewalld_active
+  changed_when: false
+  failed_when: false
+
+- name: Close Quay firewall ports
+  when:
+    - quay_uninstall_remove_firewall_ports | bool
+    - quay_firewalld_active.stdout | default('') == "active"
+  ansible.builtin.command:
+    argv:
+      - firewall-cmd
+      - --permanent
+      - --remove-port={{ item }}
+  loop: "{{ quay_firewall_ports }}"
+  register: quay_fw_remove
+  changed_when: "'NOT_ENABLED' not in (quay_fw_remove.stdout | default(''))"
+  failed_when: false
+
+- name: Reload firewalld after port removals
+  when:
+    - quay_uninstall_remove_firewall_ports | bool
+    - quay_firewalld_active.stdout | default('') == "active"
+    - quay_fw_remove is changed
+  ansible.builtin.command: firewall-cmd --reload
+  changed_when: true
+
+- name: Remove Quay hostname from /etc/hosts
+  when:
+    - quay_uninstall_remove_hosts_entry | bool
+    - quay_manage_hosts_file | bool
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^\s*\S+\s+{{ quay_hostname | regex_escape }}\s*$'
+    state: absent
+
+- name: Remove Quay data directory
+  when: quay_uninstall_remove_data | bool
+  ansible.builtin.file:
+    path: "{{ quay_base_dir }}"
+    state: absent
+
+- name: Warn when data directory was preserved
+  when: not (quay_uninstall_remove_data | bool)
+  ansible.builtin.debug:
+    msg: >-
+      Left {{ quay_base_dir }} in place. To delete registry/DB data, re-run with
+      -e quay_uninstall_remove_data=true
+
+- name: Remove offline bundle directory
+  when:
+    - quay_disconnected | bool
+    - quay_uninstall_remove_offline_bundle | bool
+    - (quay_offline_bundle_dir | default('') | length) > 0
+  ansible.builtin.file:
+    path: "{{ quay_offline_bundle_dir }}"
+    state: absent
+
+- name: Remove Quay host packages
+  when: quay_uninstall_remove_packages | bool
+  ansible.builtin.dnf:
+    name: "{{ quay_packages }}"
+    state: absent
+    autoremove: true
+
+- name: Display uninstall summary
+  ansible.builtin.debug:
+    msg:
+      - "Quay uninstall finished on {{ inventory_hostname }}"
+      - "Containers removed: {{ quay_container }}, {{ quay_redis_container }}, {{ quay_postgres_container }}"
+      - "Images removed: {{ quay_uninstall_remove_images | bool }}"
+      - "Data removed ({{ quay_base_dir }}): {{ quay_uninstall_remove_data | bool }}"
+      - "Firewall ports closed: {{ quay_uninstall_remove_firewall_ports | bool }}"
+      - "Hosts entry removed: {{ quay_uninstall_remove_hosts_entry | bool }}"
+      - "Packages removed: {{ quay_uninstall_remove_packages | bool }}"
+      - "Offline bundle removed: {{ (quay_disconnected | bool) and (quay_uninstall_remove_offline_bundle | bool) }}"

@@ -1,0 +1,58 @@
+---
+- name: Pull PostgreSQL image
+  ansible.builtin.command:
+    argv:
+      - podman
+      - pull
+      - "{{ _quay_postgres_image | trim }}"
+  register: quay_pull_postgres
+  changed_when: >-
+    'Writing manifest to image destination' in (quay_pull_postgres.stdout | default(''))
+    or 'Copying blob' in (quay_pull_postgres.stdout | default(''))
+    or 'Downloading' in (quay_pull_postgres.stderr | default(''))
+
+- name: Pull Redis image
+  ansible.builtin.command:
+    argv:
+      - podman
+      - pull
+      - "{{ _quay_redis_image | trim }}"
+  register: quay_pull_redis
+  changed_when: >-
+    'Writing manifest to image destination' in (quay_pull_redis.stdout | default(''))
+    or 'Copying blob' in (quay_pull_redis.stdout | default(''))
+    or 'Downloading' in (quay_pull_redis.stderr | default(''))
+
+- name: Pull Quay image
+  ansible.builtin.command:
+    argv:
+      - podman
+      - pull
+      - "{{ _quay_image | trim }}"
+  register: quay_pull_quay
+  changed_when: >-
+    'Writing manifest to image destination' in (quay_pull_quay.stdout | default(''))
+    or 'Copying blob' in (quay_pull_quay.stdout | default(''))
+    or 'Downloading' in (quay_pull_quay.stderr | default(''))
+
+- name: Record image digests after pull
+  ansible.builtin.command:
+    argv:
+      - podman
+      - image
+      - inspect
+      - "--format"
+      - "{{ '{{.Id}}' }}"
+      - "{{ item }}"
+  loop:
+    - "{{ _quay_postgres_image | trim }}"
+    - "{{ _quay_redis_image | trim }}"
+    - "{{ _quay_image | trim }}"
+  register: quay_image_ids
+  changed_when: false
+
+- name: Set pulled image id facts
+  ansible.builtin.set_fact:
+    _quay_postgres_image_id: "{{ quay_image_ids.results[0].stdout }}"
+    _quay_redis_image_id: "{{ quay_image_ids.results[1].stdout }}"
+    _quay_image_id: "{{ quay_image_ids.results[2].stdout }}"

@@ -1,0 +1,38 @@
+---
+# Remove a Quay PoC installed with playbooks/deploy_quay_disconnected.yml.
+#
+# Required:
+#   -e quay_uninstall_confirm=true
+#
+# Optional extras:
+#   -e quay_uninstall_remove_data=true
+#   -e quay_uninstall_remove_images=true
+#   -e quay_uninstall_remove_offline_bundle=true   # delete quay_offline_bundle_dir
+#   -e quay_uninstall_remove_packages=true
+#   -e quay_offline_bundle_dir=/opt/quay-offline-bundle
+- name: Uninstall standalone Red Hat Quay on RHEL (disconnected)
+  hosts: quay
+  become: true
+  gather_facts: true
+
+  vars:
+    quay_disconnected: true
+    quay_uninstall_confirm: false
+    quay_uninstall_remove_data: false
+    quay_uninstall_remove_images: true
+    quay_uninstall_remove_packages: false
+    quay_uninstall_remove_firewall_ports: true
+    quay_uninstall_remove_hosts_entry: true
+    quay_uninstall_remove_offline_bundle: false
+
+  pre_tasks:
+    - name: Default offline bundle path when unset
+      when: (quay_offline_bundle_dir | default('') | length) == 0
+      ansible.builtin.set_fact:
+        quay_offline_bundle_dir: /opt/quay-offline-bundle
+
+  tasks:
+    - name: Run Quay uninstall tasks
+      ansible.builtin.include_role:
+        name: quay
+        tasks_from: uninstall.yml

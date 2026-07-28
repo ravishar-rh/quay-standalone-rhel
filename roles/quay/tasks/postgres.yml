@@ -1,0 +1,134 @@
+---
+- name: Check if PostgreSQL container exists
+  ansible.builtin.command:
+    argv:
+      - podman
+      - container
+      - exists
+      - "{{ quay_postgres_container }}"
+  register: quay_pg_exists
+  changed_when: false
+  failed_when: false
+
+- name: Set PostgreSQL create flag
+  ansible.builtin.set_fact:
+    quay_pg_needs_create: "{{ quay_pg_exists.rc != 0 }}"
+
+- name: Inspect existing PostgreSQL container image
+  when: not (quay_pg_needs_create | bool)
+  ansible.builtin.command:
+    argv:
+      - podman
+      - inspect
+      - "--format"
+      - "{{ '{{.Image}}' }}"
+      - "{{ quay_postgres_container }}"
+  register: quay_pg_running_image
+  changed_when: false
+
+- name: Recreate PostgreSQL when image digest changed
+  when:
+    - not (quay_pg_needs_create | bool)
+    - quay_recreate_on_image_change | bool
+    - quay_pull_images | bool
+    - (_quay_postgres_image_id | default('')) | length > 0
+    - quay_pg_running_image.stdout != _quay_postgres_image_id
+  block:
+    - name: Stop PostgreSQL for image update
+      ansible.builtin.command:
+        argv:
+          - podman
+          - stop
+          - "{{ quay_postgres_container }}"
+      failed_when: false
+
+    - name: Remove PostgreSQL for image update
+      ansible.builtin.command:
+        argv:
+          - podman
+          - rm
+          - -f
+          - "{{ quay_postgres_container }}"
+
+    - name: Mark PostgreSQL for recreate
+      ansible.builtin.set_fact:
+        quay_pg_needs_create: true
+
+- name: Start existing PostgreSQL container if stopped
+  when: not (quay_pg_needs_create | bool)
+  block:
+    - name: Get PostgreSQL container state
+      ansible.builtin.command:
+        argv:
+          - podman
+          - inspect
+          - "--format"
+          - "{{ '{{.State.Status}}' }}"
+          - "{{ quay_postgres_container }}"
+      register: quay_pg_state
+      changed_when: false
+
+    - name: Start PostgreSQL container
+      when: quay_pg_state.stdout != "running"
+      ansible.builtin.command:
+        argv:
+          - podman
+          - start
+          - "{{ quay_postgres_container }}"
+
+- name: Create and start PostgreSQL container
+  when: quay_pg_needs_create | bool
+  ansible.builtin.command:
+    argv:
+      - podman
+      - run
+      - -d
+      - --name
+      - "{{ quay_postgres_container }}"
+      - --restart
+      - always
+      - -e
+      - "POSTGRESQL_USER={{ quay_db_user }}"
+      - -e
+      - "POSTGRESQL_PASSWORD={{ quay_db_password }}"
+      - -e
+      - "POSTGRESQL_DATABASE={{ quay_db_name }}"
+      - -e
+      - "POSTGRESQL_ADMIN_PASSWORD={{ quay_db_admin_password }}"
+      - -p
+      - "{{ quay_db_port }}:5432"
+      - -v
+      - "{{ quay_base_dir }}/postgres-quay:/var/lib/pgsql/data:Z"
+      - "{{ _quay_postgres_image | trim }}"
+  register: quay_pg_create
+  no_log: true
+
+- name: Wait for PostgreSQL to accept connections
+  ansible.builtin.command:
+    argv:
+      - podman
+      - exec
+      - "{{ quay_postgres_container }}"
+      - bash
+      - -c
+      - pg_isready -U postgres
+  register: quay_pg_ready
+  until: quay_pg_ready.rc == 0
+  retries: "{{ (quay_postgres_ready_timeout | int / 5) | int }}"
+  delay: 5
+  changed_when: false
+
+- name: Ensure pg_trgm extension exists
+  ansible.builtin.command:
+    argv:
+      - podman
+      - exec
+      - "{{ quay_postgres_container }}"
+      - bash
+      - -c
+      - echo "CREATE EXTENSION IF NOT EXISTS pg_trgm" | psql -d {{ quay_db_name }} -U postgres
+  register: quay_pg_trgm
+  changed_when: "'CREATE EXTENSION' in quay_pg_trgm.stdout"
+  failed_when:
+    - quay_pg_trgm.rc != 0
+    - "'already exists' not in quay_pg_trgm.stderr"

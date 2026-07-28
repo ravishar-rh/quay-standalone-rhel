@@ -1,0 +1,11 @@
+# Python packages for the Ansible bastion / control node.
+# Install with: python3 -m pip install --user -r requirements.txt
+#
+# Prefer pinning ansible-core; collections live in requirements.yml.
+
+ansible-core>=2.16,<2.20
+jmespath>=1.0.1
+netaddr>=1.2.1
+passlib>=1.7.4
+PyYAML>=6.0.1
+cryptography>=42.0.0

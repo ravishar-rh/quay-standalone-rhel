@@ -1,0 +1,42 @@
+---
+# Install auth.json from the Ansible controller when a local path is set.
+# Absolute paths on the managed host should use quay_registry_auth_file_remote instead.
+
+- name: Ensure Podman config directory exists
+  ansible.builtin.file:
+    path: /root/.config/containers
+    state: directory
+    mode: "0700"
+
+- name: Install registry auth.json from controller
+  when: (quay_registry_auth_file | default('') | length) > 0
+  ansible.builtin.copy:
+    src: "{{ quay_registry_auth_file }}"
+    dest: /root/.config/containers/auth.json
+    mode: "0600"
+
+- name: Install registry auth.json already on the managed host
+  when: (quay_registry_auth_file_remote | default('') | length) > 0
+  ansible.builtin.copy:
+    src: "{{ quay_registry_auth_file_remote }}"
+    dest: /root/.config/containers/auth.json
+    mode: "0600"
+    remote_src: true
+
+- name: Log in to container registry
+  when:
+    - (quay_registry_username | default('') | length) > 0
+    - (quay_registry_password | default('') | length) > 0
+  ansible.builtin.command:
+    argv:
+      - podman
+      - login
+      - "{{ quay_registry }}"
+      - "--username"
+      - "{{ quay_registry_username }}"
+      - "--password-stdin"
+  args:
+    stdin: "{{ quay_registry_password }}"
+  no_log: true
+  register: quay_podman_login
+  changed_when: "'Login Succeeded!' in quay_podman_login.stdout or 'Login Succeeded!' in quay_podman_login.stderr"

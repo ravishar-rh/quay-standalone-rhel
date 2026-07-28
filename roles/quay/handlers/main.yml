@@ -1,0 +1,9 @@
+---
+- name: Reload firewalld
+  ansible.builtin.command: firewall-cmd --reload
+  listen: reload firewalld
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+  listen: reload systemd

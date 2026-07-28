@@ -1,0 +1,8 @@
+---
+# Non-secret defaults for the quay inventory group.
+# Credentials go in vault.yml in this directory (gitignored).
+# See vault.yml.example.
+
+# quay_hostname: quay-server.example.com
+# quay_host_ip: 192.0.2.10
+# quay_version: v3.17.3

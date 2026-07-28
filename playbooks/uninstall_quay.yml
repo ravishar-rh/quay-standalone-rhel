@@ -1,0 +1,32 @@
+---
+# Remove a Quay PoC installed with playbooks/deploy_quay.yml (online).
+#
+# Required:
+#   -e quay_uninstall_confirm=true
+#
+# Optional extras:
+#   -e quay_uninstall_remove_data=true          # delete /var/lib/quay
+#   -e quay_uninstall_remove_images=true        # default true
+#   -e quay_uninstall_remove_packages=true      # remove podman/acl/curl/firewalld
+#   -e quay_uninstall_remove_firewall_ports=true
+#   -e quay_uninstall_remove_hosts_entry=true
+- name: Uninstall standalone Red Hat Quay on RHEL (connected)
+  hosts: quay
+  become: true
+  gather_facts: true
+
+  vars:
+    quay_disconnected: false
+    quay_uninstall_confirm: false
+    quay_uninstall_remove_data: false
+    quay_uninstall_remove_images: true
+    quay_uninstall_remove_packages: false
+    quay_uninstall_remove_firewall_ports: true
+    quay_uninstall_remove_hosts_entry: true
+    quay_uninstall_remove_offline_bundle: false
+
+  tasks:
+    - name: Run Quay uninstall tasks
+      ansible.builtin.include_role:
+        name: quay
+        tasks_from: uninstall.yml

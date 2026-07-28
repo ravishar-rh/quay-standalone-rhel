@@ -1,0 +1,29 @@
+BUILDLOGS_REDIS:
+  host: {{ quay_hostname }}
+  password: {{ quay_redis_password }}
+  port: {{ quay_redis_port }}
+CREATE_NAMESPACE_ON_PUSH: {{ quay_create_namespace_on_push | bool }}
+DATABASE_SECRET_KEY: {{ quay_database_secret_key }}
+DB_URI: postgresql://{{ quay_db_user }}:{{ quay_db_password }}@{{ quay_hostname }}:{{ quay_db_port }}/{{ quay_db_name }}
+DISTRIBUTED_STORAGE_CONFIG:
+  default:
+    - LocalStorage
+    - storage_path: /datastorage/registry
+DISTRIBUTED_STORAGE_DEFAULT_LOCATIONS: []
+DISTRIBUTED_STORAGE_PREFERENCE:
+  - default
+FEATURE_MAILING: {{ quay_feature_mailing | bool }}
+PREFERRED_URL_SCHEME: {{ quay_preferred_url_scheme }}
+SECRET_KEY: {{ quay_secret_key }}
+SERVER_HOSTNAME: {{ quay_hostname }}
+SETUP_COMPLETE: true
+{% if quay_superusers | length > 0 %}
+SUPER_USERS:
+{% for user in quay_superusers %}
+  - {{ user }}
+{% endfor %}
+{% endif %}
+USER_EVENTS_REDIS:
+  host: {{ quay_hostname }}
+  password: {{ quay_redis_password }}
+  port: {{ quay_redis_port }}

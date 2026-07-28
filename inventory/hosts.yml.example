@@ -1,0 +1,24 @@
+---
+all:
+  children:
+    quay:
+      hosts:
+        # Option A: deploy on this same machine (bastion = Quay host).
+        # Do not use ansible_host: localhost with SSH — that causes
+        # "Permission denied (publickey,...,password)".
+        quay-server.example.com:
+          ansible_connection: local
+          ansible_host: 127.0.0.1
+          quay_hostname: quay-server.example.com
+          # quay_host_ip: 192.0.2.10
+          # Disconnected install (after extracting the offline bundle):
+          # quay_offline_bundle_dir: /opt/quay-offline-bundle
+
+        # Option B: remote RHEL 9/10 server — replace Option A with:
+        # quay-server.example.com:
+        #   ansible_host: 192.0.2.10
+        #   ansible_user: root
+        #   ansible_ssh_private_key_file: ~/.ssh/id_rsa
+        #   quay_hostname: quay-server.example.com
+
+        # Credentials: run ./scripts/setup-vault.sh (do not put passwords here).

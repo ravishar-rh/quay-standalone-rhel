@@ -1,0 +1,121 @@
+---
+- name: Check if Quay container exists
+  ansible.builtin.command:
+    argv:
+      - podman
+      - container
+      - exists
+      - "{{ quay_container }}"
+  register: quay_ctr_exists
+  changed_when: false
+  failed_when: false
+
+- name: Set Quay create flag
+  ansible.builtin.set_fact:
+    quay_needs_create: "{{ quay_ctr_exists.rc != 0 }}"
+
+- name: Inspect existing Quay container image
+  when: not (quay_needs_create | bool)
+  ansible.builtin.command:
+    argv:
+      - podman
+      - inspect
+      - "--format"
+      - "{{ '{{.Image}}' }}"
+      - "{{ quay_container }}"
+  register: quay_ctr_running_image
+  changed_when: false
+
+- name: Recreate Quay when config or image changed
+  when:
+    - not (quay_needs_create | bool)
+    - >-
+      (quay_config_deploy is changed)
+      or
+      (
+        (quay_recreate_on_image_change | bool)
+        and (quay_pull_images | bool)
+        and ((_quay_image_id | default('')) | length > 0)
+        and (quay_ctr_running_image.stdout != _quay_image_id)
+      )
+  block:
+    - name: Stop Quay container for update
+      ansible.builtin.command:
+        argv:
+          - podman
+          - stop
+          - "{{ quay_container }}"
+      failed_when: false
+
+    - name: Remove Quay container for update
+      ansible.builtin.command:
+        argv:
+          - podman
+          - rm
+          - -f
+          - "{{ quay_container }}"
+
+    - name: Mark Quay for recreate
+      ansible.builtin.set_fact:
+        quay_needs_create: true
+
+- name: Start existing Quay container if stopped
+  when: not (quay_needs_create | bool)
+  block:
+    - name: Get Quay container state
+      ansible.builtin.command:
+        argv:
+          - podman
+          - inspect
+          - "--format"
+          - "{{ '{{.State.Status}}' }}"
+          - "{{ quay_container }}"
+      register: quay_ctr_state
+      changed_when: false
+
+    - name: Start Quay container
+      when: quay_ctr_state.stdout != "running"
+      ansible.builtin.command:
+        argv:
+          - podman
+          - start
+          - "{{ quay_container }}"
+
+- name: Create and start Quay registry container
+  when: quay_needs_create | bool
+  ansible.builtin.command:
+    argv:
+      - podman
+      - run
+      - -d
+      - --name
+      - "{{ quay_container }}"
+      - --restart
+      - always
+      - -p
+      - "{{ quay_http_port }}:8080"
+      - -p
+      - "{{ quay_https_port }}:8443"
+      - -v
+      - "{{ quay_base_dir }}/config:/conf/stack:Z"
+      - -v
+      - "{{ quay_base_dir }}/storage:/datastorage:Z"
+      - "{{ _quay_image | trim }}"
+
+- name: Wait for Quay to respond on the host
+  ansible.builtin.command:
+    argv:
+      - curl
+      - -fsS
+      - -o
+      - /dev/null
+      - -w
+      - "%{http_code}"
+      - "--max-time"
+      - "5"
+      - "http://127.0.0.1:{{ quay_http_port }}/"
+  register: quay_curl
+  until: quay_curl.rc == 0
+  retries: "{{ (quay_quay_ready_timeout | int / 10) | int }}"
+  delay: 10
+  changed_when: false

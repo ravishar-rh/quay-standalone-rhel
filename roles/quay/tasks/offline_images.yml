@@ -1,0 +1,121 @@
+---
+# Load container images from offline tar files (no registry.redhat.io).
+- name: Resolve offline images directory for host major version
+  ansible.builtin.set_fact:
+    _quay_offline_images_dir: "{{ quay_offline_bundle_dir }}/rhel{{ ansible_distribution_major_version }}/images"
+
+- name: Assert offline images directory exists
+  ansible.builtin.stat:
+    path: "{{ _quay_offline_images_dir }}"
+  register: quay_offline_img_stat
+
+- name: Fail when offline images dir is missing
+  when: not quay_offline_img_stat.stat.exists
+  ansible.builtin.fail:
+    msg: >-
+      Missing offline images dir {{ _quay_offline_images_dir }}.
+      Build a bundle with ./scripts/download-offline-bundle.sh.
+
+- name: Set offline image tarball paths
+  ansible.builtin.set_fact:
+    _quay_offline_postgres_tar: "{{ _quay_offline_images_dir }}/postgresql-16.tar"
+    _quay_offline_redis_tar: "{{ _quay_offline_images_dir }}/redis-7.tar"
+    _quay_offline_quay_tar: "{{ _quay_offline_images_dir }}/quay-{{ quay_version }}.tar"
+
+- name: Prefer quay tarball matching quay_version, else any quay-*.tar
+  block:
+    - name: Check versioned quay tarball
+      ansible.builtin.stat:
+        path: "{{ _quay_offline_quay_tar }}"
+      register: quay_ver_tar
+
+    - name: Find fallback quay tarball
+      when: not quay_ver_tar.stat.exists
+      ansible.builtin.find:
+        paths: "{{ _quay_offline_images_dir }}"
+        patterns: "quay-*.tar"
+      register: quay_fallback_tars
+
+    - name: Use fallback quay tarball
+      when:
+        - not quay_ver_tar.stat.exists
+        - (quay_fallback_tars.files | default([]) | length) > 0
+      ansible.builtin.set_fact:
+        _quay_offline_quay_tar: "{{ (quay_fallback_tars.files | sort(attribute='path') | last).path }}"
+
+- name: Assert offline image tarballs exist
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ _quay_offline_postgres_tar }}"
+    - "{{ _quay_offline_redis_tar }}"
+    - "{{ _quay_offline_quay_tar }}"
+  register: quay_offline_tar_stats
+
+- name: Fail when an image tarball is missing
+  when: not (item.stat.exists | default(false))
+  ansible.builtin.fail:
+    msg: "Missing image archive {{ item.item }}"
+  loop: "{{ quay_offline_tar_stats.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Load offline container images with podman
+  ansible.builtin.command:
+    argv:
+      - podman
+      - load
+      - -i
+      - "{{ item }}"
+  loop:
+    - "{{ _quay_offline_postgres_tar }}"
+    - "{{ _quay_offline_redis_tar }}"
+    - "{{ _quay_offline_quay_tar }}"
+  changed_when: true
+
+- name: Read image refs from offline manifest when present
+  ansible.builtin.command:
+    argv:
+      - awk
+      - -F
+      - ': '
+      - "{{ item }}"
+      - "{{ _quay_offline_images_dir }}/images.manifest"
+  loop:
+    - '/^postgres_ref/{print $2}'
+    - '/^redis_ref/{print $2}'
+    - '/^quay_ref/{print $2}'
+  register: quay_manifest_refs
+  changed_when: false
+  failed_when: false
+
+- name: Apply image refs from manifest
+  when:
+    - quay_manifest_refs.results[0].rc == 0
+    - quay_manifest_refs.results[0].stdout | length > 0
+  ansible.builtin.set_fact:
+    _quay_postgres_image: "{{ quay_manifest_refs.results[0].stdout | trim }}"
+    _quay_redis_image: "{{ quay_manifest_refs.results[1].stdout | trim }}"
+    _quay_image: "{{ quay_manifest_refs.results[2].stdout | trim }}"
+
+- name: Record loaded image ids
+  ansible.builtin.command:
+    argv:
+      - podman
+      - image
+      - inspect
+      - "--format"
+      - "{{ '{{.Id}}' }}"
+      - "{{ item }}"
+  loop:
+    - "{{ _quay_postgres_image | trim }}"
+    - "{{ _quay_redis_image | trim }}"
+    - "{{ _quay_image | trim }}"
+  register: quay_image_ids
+  changed_when: false
+
+- name: Set loaded image id facts
+  ansible.builtin.set_fact:
+    _quay_postgres_image_id: "{{ quay_image_ids.results[0].stdout }}"
+    _quay_redis_image_id: "{{ quay_image_ids.results[1].stdout }}"
+    _quay_image_id: "{{ quay_image_ids.results[2].stdout }}"

@@ -1,0 +1,37 @@
+---
+# Install host packages from the offline RPM directory (no Red Hat repos).
+- name: Resolve offline RPM directory for host major version
+  ansible.builtin.set_fact:
+    _quay_offline_rpm_dir: >-
+      {{ quay_offline_bundle_dir }}/rhel{{ ansible_distribution_major_version }}/rpms
+
+- name: Assert offline RPM directory exists
+  ansible.builtin.stat:
+    path: "{{ _quay_offline_rpm_dir }}"
+  register: quay_offline_rpm_stat
+
+- name: Fail when offline RPMs are missing
+  when: not quay_offline_rpm_stat.stat.exists
+  ansible.builtin.fail:
+    msg: >-
+      Missing offline RPM dir {{ _quay_offline_rpm_dir }}.
+      Build a bundle with ./scripts/download-offline-bundle.sh
+      and set quay_offline_bundle_dir on the host.
+
+- name: Find offline RPM packages
+  ansible.builtin.find:
+    paths: "{{ _quay_offline_rpm_dir }}"
+    patterns: "*.rpm"
+  register: quay_offline_rpms
+
+- name: Fail when no RPM files found
+  when: quay_offline_rpms.files | length == 0
+  ansible.builtin.fail:
+    msg: "No .rpm files found in {{ _quay_offline_rpm_dir }}"
+
+- name: Install offline RPMs
+  ansible.builtin.dnf:
+    name: "{{ quay_offline_rpms.files | map(attribute='path') | list }}"
+    state: present
+    disable_gpg_check: "{{ quay_offline_disable_gpg_check | bool }}"
+    disablerepo: "*"

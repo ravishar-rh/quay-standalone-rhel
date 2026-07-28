@@ -1,0 +1,9 @@
+---
+# Containers are started with --restart=always. Enabling podman-restart ensures
+# they come back after a host reboot without conflicting systemd --new units.
+- name: Enable podman-restart for containers with restart policy
+  when: quay_enable_systemd | bool
+  ansible.builtin.systemd:
+    name: podman-restart.service
+    enabled: true
+    state: started

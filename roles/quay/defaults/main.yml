@@ -1,0 +1,114 @@
+---
+# Base installation directory for Quay data
+quay_base_dir: /var/lib/quay
+
+# Hostname used in config.yaml and /etc/hosts (clients must resolve this)
+quay_hostname: quay-server.example.com
+
+# When true, add quay_hostname -> ansible_host (or quay_host_ip) to /etc/hosts
+quay_manage_hosts_file: true
+quay_host_ip: "{{ ansible_default_ipv4.address }}"
+
+# Container images — selected by RHEL major version when left empty
+# Quay image is based on RHEL 9 regardless of host OS (official Quay 3.x image)
+quay_image: "registry.redhat.io/quay/quay-rhel9:{{ quay_version }}"
+quay_version: v3.17.3
+
+# postgres/redis images are filled in tasks from quay_images_* maps when unset
+quay_postgres_image: ""
+quay_redis_image: ""
+
+# Latest supported streams per host major version (:latest pulls newest digest)
+quay_images_rhel9:
+  postgres: registry.redhat.io/rhel9/postgresql-16:latest
+  redis: registry.redhat.io/rhel9/redis-7:latest
+
+quay_images_rhel10:
+  postgres: registry.redhat.io/rhel10/postgresql-16:latest
+  redis: registry.redhat.io/rhel9/redis-7:latest
+
+# Always pull images before create/start so digests stay current
+quay_pull_images: true
+
+# Recreate running containers when a pulled image digest changes
+quay_recreate_on_image_change: true
+
+# Disconnected / air-gapped install (no Red Hat repos or registry.redhat.io)
+# Build bundle on a connected host: ./scripts/download-offline-bundle.sh
+quay_disconnected: false
+quay_offline_bundle_dir: ""
+# Allow unsigned/local RPMs from the offline bundle
+quay_offline_disable_gpg_check: true
+
+# Container names
+quay_postgres_container: postgresql-quay
+quay_redis_container: redis
+quay_container: quay
+
+# Database — set passwords via inventory/group_vars/quay/vault.yml; run ./scripts/setup-vault.sh
+quay_db_user: quayuser
+quay_db_password: ""
+quay_db_name: quay
+quay_db_admin_password: ""
+quay_db_port: 5432
+
+# Redis — set password via inventory/group_vars/quay/vault.yml (not committed)
+quay_redis_password: ""
+quay_redis_port: 6379
+
+# Quay HTTP(S) host ports
+quay_http_port: 80
+quay_https_port: 443
+
+# Application secrets — set via ./scripts/setup-vault.sh; never commit real values
+quay_secret_key: ""
+quay_database_secret_key: ""
+
+# Optional superuser account name (create the user in the UI after first boot)
+quay_superusers:
+  - quayadmin
+
+# Feature flags written into config.yaml
+quay_create_namespace_on_push: true
+quay_feature_mailing: false
+quay_preferred_url_scheme: http
+
+# registry.redhat.io authentication — set via vault or local inventory only
+quay_registry: registry.redhat.io
+quay_registry_username: ""
+quay_registry_password: ""
+# Path on the Ansible controller copied to the host
+quay_registry_auth_file: ""
+# Path already present on the managed host
+quay_registry_auth_file_remote: ""
+
+# Host packages — state latest keeps Podman and helpers current
+quay_packages:
+  - podman
+  - acl
+  - curl
+  - firewalld
+quay_packages_state: latest
+
+# Firewall ports to open when firewalld is active
+quay_firewall_ports:
+  - "{{ quay_http_port }}/tcp"
+  - "{{ quay_https_port }}/tcp"
+  - "{{ quay_db_port }}/tcp"
+  - "{{ quay_redis_port }}/tcp"
+
+# Persist containers via systemd (restart policy + podman-restart)
+quay_enable_systemd: true
+
+# Wait timeouts (seconds)
+quay_postgres_ready_timeout: 120
+quay_quay_ready_timeout: 180
+
+# Uninstall / cleanup (used by playbooks/uninstall_quay*.yml)
+quay_uninstall_confirm: false
+quay_uninstall_remove_data: false
+quay_uninstall_remove_images: true
+quay_uninstall_remove_packages: false
+quay_uninstall_remove_firewall_ports: true
+quay_uninstall_remove_hosts_entry: true
+quay_uninstall_remove_offline_bundle: false

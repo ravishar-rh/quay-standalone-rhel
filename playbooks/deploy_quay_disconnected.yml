@@ -1,0 +1,27 @@
+---
+# Deploy Quay on a disconnected (air-gapped) RHEL 9/10 host.
+#
+# 1. On a connected machine: ./scripts/download-offline-bundle.sh
+# 2. Copy quay-offline-bundle.tar.gz to the air-gapped site and extract, e.g.:
+#      sudo tar -C /opt -xzf quay-offline-bundle.tar.gz
+# 3. Set in inventory (or leave the default below via host var):
+#      quay_offline_bundle_dir: /opt/quay-offline-bundle
+# 4. ./scripts/setup-vault.sh
+# 5. ansible-playbook playbooks/deploy_quay_disconnected.yml
+- name: Deploy standalone Red Hat Quay on RHEL (disconnected)
+  hosts: quay
+  become: true
+  gather_facts: true
+
+  vars:
+    quay_disconnected: true
+    quay_pull_images: false
+
+  pre_tasks:
+    - name: Default offline bundle path when unset
+      when: (quay_offline_bundle_dir | default('') | length) == 0
+      ansible.builtin.set_fact:
+        quay_offline_bundle_dir: /opt/quay-offline-bundle
+
+  roles:
+    - role: quay

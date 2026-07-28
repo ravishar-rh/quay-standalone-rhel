@@ -1,0 +1,9 @@
+---
+- name: Deploy Quay config.yaml
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: "{{ quay_base_dir }}/config/config.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+  register: quay_config_deploy

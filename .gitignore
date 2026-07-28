@@ -1,0 +1,46 @@
+# Ansible runtime / local overrides (never commit real inventory or secrets)
+inventory/hosts.yml
+inventory/hosts.ini
+inventory/hosts
+inventory/group_vars/**/vault.yml
+group_vars/**/vault.yml
+host_vars/*
+!host_vars/.gitkeep
+
+# Vault / auth material
+.vault_pass
+.vault_pass.txt
+.vault-password
+.vault-password-file
+**/auth.json
+**/.docker/config.json
+**/containers/auth.json
+
+# TLS / keys that may be generated for Quay
+*.pem
+*.key
+*.p12
+*.pfx
+ssl.cert
+ssl.key
+rootCA.pem
+rootCA.key
+rootCA.srl
+
+# Local env and credentials
+.env
+.env.*
+!.env.example
+credentials.yml
+secrets.yml
+
+quay-offline-bundle/
+quay-offline-bundle.tar.gz
+quay-offline-bundle.tar.gz.sha256
+__pycache__/
+*.pyc
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store

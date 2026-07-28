@@ -1,0 +1,24 @@
+---
+- name: Check whether firewalld is active
+  ansible.builtin.command: systemctl is-active firewalld
+  register: quay_firewalld_active
+  changed_when: false
+  failed_when: false
+
+- name: Open Quay firewall ports
+  when: quay_firewalld_active.stdout == "active"
+  ansible.builtin.command:
+    argv:
+      - firewall-cmd
+      - --permanent
+      - --add-port={{ item }}
+  loop: "{{ quay_firewall_ports }}"
+  register: quay_fw_add
+  changed_when: "'ALREADY_ENABLED' not in quay_fw_add.stdout"
+
+- name: Reload firewalld after port changes
+  when:
+    - quay_firewalld_active.stdout == "active"
+    - quay_fw_add is changed
+  ansible.builtin.command: firewall-cmd --reload
+  changed_when: true

@@ -1,0 +1,95 @@
+---
+- name: Check if Redis container exists
+  ansible.builtin.command:
+    argv:
+      - podman
+      - container
+      - exists
+      - "{{ quay_redis_container }}"
+  register: quay_redis_exists
+  changed_when: false
+  failed_when: false
+
+- name: Set Redis create flag
+  ansible.builtin.set_fact:
+    quay_redis_needs_create: "{{ quay_redis_exists.rc != 0 }}"
+
+- name: Inspect existing Redis container image
+  when: not (quay_redis_needs_create | bool)
+  ansible.builtin.command:
+    argv:
+      - podman
+      - inspect
+      - "--format"
+      - "{{ '{{.Image}}' }}"
+      - "{{ quay_redis_container }}"
+  register: quay_redis_running_image
+  changed_when: false
+
+- name: Recreate Redis when image digest changed
+  when:
+    - not (quay_redis_needs_create | bool)
+    - quay_recreate_on_image_change | bool
+    - quay_pull_images | bool
+    - (_quay_redis_image_id | default('')) | length > 0
+    - quay_redis_running_image.stdout != _quay_redis_image_id
+  block:
+    - name: Stop Redis for image update
+      ansible.builtin.command:
+        argv:
+          - podman
+          - stop
+          - "{{ quay_redis_container }}"
+      failed_when: false
+
+    - name: Remove Redis for image update
+      ansible.builtin.command:
+        argv:
+          - podman
+          - rm
+          - -f
+          - "{{ quay_redis_container }}"
+
+    - name: Mark Redis for recreate
+      ansible.builtin.set_fact:
+        quay_redis_needs_create: true
+
+- name: Start existing Redis container if stopped
+  when: not (quay_redis_needs_create | bool)
+  block:
+    - name: Get Redis container state
+      ansible.builtin.command:
+        argv:
+          - podman
+          - inspect
+          - "--format"
+          - "{{ '{{.State.Status}}' }}"
+          - "{{ quay_redis_container }}"
+      register: quay_redis_state
+      changed_when: false
+
+    - name: Start Redis container
+      when: quay_redis_state.stdout != "running"
+      ansible.builtin.command:
+        argv:
+          - podman
+          - start
+          - "{{ quay_redis_container }}"
+
+- name: Create and start Redis container
+  when: quay_redis_needs_create | bool
+  ansible.builtin.command:
+    argv:
+      - podman
+      - run
+      - -d
+      - --name
+      - "{{ quay_redis_container }}"
+      - --restart
+      - always
+      - -p
+      - "{{ quay_redis_port }}:6379"
+      - -e
+      - "REDIS_PASSWORD={{ quay_redis_password }}"
+      - "{{ _quay_redis_image | trim }}"
+  no_log: true

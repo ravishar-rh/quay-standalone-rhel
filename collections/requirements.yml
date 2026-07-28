@@ -1,0 +1,10 @@
+---
+# Installed automatically by AAP on project sync.
+# Also usable with: ansible-galaxy collection install -r collections/requirements.yml
+collections:
+  - name: ansible.posix
+    version: ">=1.5.4"
+  - name: community.general
+    version: ">=8.0.0"
+  - name: containers.podman
+    version: ">=1.13.0"

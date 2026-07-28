@@ -1,0 +1,24 @@
+---
+# Do not copy this file by hand for real deployments.
+# Use the vault automation instead:
+#
+#   ./scripts/setup-vault.sh
+#
+# That writes and encrypts inventory/group_vars/quay/vault.yml (gitignored)
+# and creates .vault_pass (gitignored). ansible.cfg points at .vault_pass.
+#
+# Non-interactive example:
+#   QUAY_REGISTRY_USERNAME=myuser \
+#   QUAY_REGISTRY_PASSWORD=mytoken \
+#   QUAY_VAULT_PASSWORD='choose-a-strong-vault-pass' \
+#   ./scripts/setup-vault.sh --non-interactive
+#
+# Placeholders below are documentation only — never commit a filled vault.yml.
+
+quay_registry_username: "CHANGE_ME_RH_USERNAME"
+quay_registry_password: "CHANGE_ME_RH_PASSWORD"
+quay_db_password: "CHANGE_ME_DB_PASSWORD"
+quay_db_admin_password: "CHANGE_ME_DB_ADMIN_PASSWORD"
+quay_redis_password: "CHANGE_ME_REDIS_PASSWORD"
+quay_secret_key: "CHANGE_ME_SECRET_KEY"
+quay_database_secret_key: "CHANGE_ME_DATABASE_SECRET_KEY"
